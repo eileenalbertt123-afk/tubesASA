@@ -67,9 +67,8 @@ def brute_force(costs, urgency, regions, budget):
         if val > best_val:
             best_val = val
             best_x   = x[:]
+    best_val = objective(best_x, costs, urgency, regions, budget)
     jfi = jains_fairness(best_x, regions)
-    best_val = sum(urgency[i] for i in range(n) if best_x[i]) + LAMBDA * jfi
-    
     return best_x, best_val, jfi
 
 # Dynamic Programming 
