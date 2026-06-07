@@ -6,12 +6,12 @@ import math
 import time
 import numpy as np
 
-# ─── Reproducibility ───────────────────────────────────────────────────────────
+# Reproducibility 
 SEED = 42
 random.seed(SEED)
 np.random.seed(SEED)
 
-# ─── Parameters ────────────────────────────────────────────────────────────────
+# Parameters 
 LAMBDA      = 10       # fairness weight
 NUM_REGIONS = 4        # jumlah wilayah
 SA_RUNS     = 5        # jumlah run SA per skenario
@@ -21,7 +21,7 @@ SA_T_MIN    = 0.01
 SA_ALPHA    = 0.995
 SA_ITER_PER_TEMP = 100
 
-# ─── Dataset Generator ─────────────────────────────────────────────────────────
+# Dataset Generator 
 def generate_dataset(n, num_regions=NUM_REGIONS, seed=None):
     if seed is not None:
         random.seed(seed)
@@ -32,7 +32,7 @@ def generate_dataset(n, num_regions=NUM_REGIONS, seed=None):
     budget   = int(0.4 * sum(costs))
     return costs, urgency, regions, budget
 
-# ─── Jain's Fairness Index ──────────────────────────────────────────────────────
+# Jain's Fairness Index 
 def jains_fairness(x, regions, num_regions=NUM_REGIONS):
     counts = [0] * num_regions
     for i, xi in enumerate(x):
@@ -45,16 +45,18 @@ def jains_fairness(x, regions, num_regions=NUM_REGIONS):
     denom = num_regions * sum(c ** 2 for c in counts)
     return num / denom if denom > 0 else 0.0
 
-# ─── Objective Function ────────────────────────────────────────────────────────
-def objective(x, costs, urgency, regions, budget):
+# Objective Function 
+def objective(x, costs, urgency, regions, budget, theta=0.5):
     total_cost = sum(costs[i] for i in range(len(x)) if x[i])
     if total_cost > budget:
-        return -1e9   # penalti pelanggaran kendala
-    total_urgency = sum(urgency[i] for i in range(len(x)) if x[i])
+        return -1e9   # penalti pelanggaran kendala anggaran
     jfi = jains_fairness(x, regions)
+    if jfi < theta:
+        return -1e9   # penalti pelanggaran kendala fairness minimum
+    total_urgency = sum(urgency[i] for i in range(len(x)) if x[i])
     return total_urgency + LAMBDA * jfi
 
-# ─── Brute Force ───────────────────────────────────────────────────────────────
+# Brute Force 
 def brute_force(costs, urgency, regions, budget):
     n = len(costs)
     best_val = -1e18
@@ -66,16 +68,13 @@ def brute_force(costs, urgency, regions, budget):
             best_val = val
             best_x   = x[:]
     jfi = jains_fairness(best_x, regions)
+    best_val = sum(urgency[i] for i in range(n) if best_x[i]) + LAMBDA * jfi
+    
     return best_x, best_val, jfi
 
-# ─── Dynamic Programming ───────────────────────────────────────────────────────
-# DP optimasi urgensi + fairness: karena JFI bergantung pada keseluruhan solusi,
-# DP menyelesaikan 0/1 knapsack untuk urgensi (kendala anggaran), lalu JFI
-# dihitung pada solusi terpilih. Ini merupakan pendekatan dua-tahap yang umum
-# digunakan ketika fungsi objektif mengandung komponen non-separable.
+# Dynamic Programming 
 def dynamic_programming(costs, urgency, regions, budget):
     n = len(costs)
-    # dp[i][b] = max total urgency menggunakan item 0..i-1 dengan budget b
     dp = [[0] * (budget + 1) for _ in range(n + 1)]
     for i in range(1, n + 1):
         w = costs[i - 1]
@@ -97,7 +96,7 @@ def dynamic_programming(costs, urgency, regions, budget):
     val = sum(urgency[i] for i in range(n) if x[i]) + LAMBDA * jfi
     return x, val, jfi
 
-# ─── Simulated Annealing ───────────────────────────────────────────────────────
+# Simulated Annealing 
 def simulated_annealing_single(costs, urgency, regions, budget):
     n = len(costs)
     # Solusi awal acak yang feasible
@@ -142,7 +141,7 @@ def simulated_annealing(costs, urgency, regions, budget, runs=SA_RUNS):
     avg_jfi = sum(r[2] for r in results) / runs
     return best[0], best[1], best[2], avg_val, avg_jfi
 
-# ─── Runner ────────────────────────────────────────────────────────────────────
+# Runner 
 def run_experiment(n, dataset_seed=SEED):
     costs, urgency, regions, budget = generate_dataset(n, seed=dataset_seed)
     results = {}
@@ -175,7 +174,7 @@ def run_experiment(n, dataset_seed=SEED):
 
     return results, costs, urgency, regions, budget
 
-# ─── Main ──────────────────────────────────────────────────────────────────────
+# Main
 if __name__ == '__main__':
     sizes = [10, 15, 20, 50]
     print(f"{'n':>4} | {'Algo':>4} | {'Obj Val':>10} | {'JFI':>6} | {'Time (ms)':>10} | {'Gap vs BF':>10}")
@@ -195,4 +194,6 @@ if __name__ == '__main__':
             t_ms = r['time_ms']
             gap  = f"{((bf_val - val) / bf_val * 100):.2f}%" if bf_val and algo != 'BF' else "–"
             print(f"{n:>4} | {algo:>4} | {val:>10.4f} | {jfi:>6.4f} | {t_ms:>10.4f} | {gap:>10}")
+            if algo == 'SA':
+                print(f"    avg_val={r['avg_val']:.4f} | avg_jfi={r['avg_jfi']:.4f}")
         print()
